@@ -34,17 +34,37 @@ func (p *ParserData) isEnd() bool {
 	return p.Index < p.Length && p.Data[p.Index] == byte(101) // e
 }
 
+func (p *ParserData) readNext() (interface{}, error) {
+	var (
+		val interface{}
+		err error
+	)
+
+	if p.isString() {
+		val, err = p.ReadString()
+	} else if p.isInt() {
+		val, err = p.ReadInt()
+	} else if p.isDict() {
+		val, err = p.ReadDictionary()
+	} else if p.isList() {
+		val, err = p.ReadList()
+	} else {
+		val, err = nil, errorInvalidFormat
+	}
+
+	return val, err
+}
+
 // ReadString : Format <string-length>:<string>
 func (p *ParserData) ReadString() (string, error) {
+	length, colonIndex := 0, -1
+
 	if !p.isString() {
 		return "", errorInvalidFormat
 	}
 
-	length := 0
-	colonIndex := -1
-
 	for p.Index < p.Length {
-		if p.Data[p.Index] == byte(58) {
+		if p.Data[p.Index] == byte(58) { // :
 			colonIndex = p.Index
 			break
 		}
@@ -85,16 +105,14 @@ func (p *ParserData) ReadInt() (int64, error) {
 	p.Index++
 
 	for !p.isEnd() {
-		if p.Data[p.Index] == byte(45) { // "-"
-			isNegative = true
-		} else if p.Data[p.Index] == byte(48) /* digit 0 */ &&
+		if p.Data[p.Index] == byte(48) /* digit 0 */ &&
 			((!isNegative && i == 0 && p.Index+1 < p.Length && p.Data[p.Index+1] != byte(101) /* "e" */) || (isNegative && i == 1)) { // invalid formats: "i-0e","i003e","i-003e"
 			return 0, errorInvalidInteger
+		} else if digit, err := strconv.Atoi(string(p.Data[p.Index])); err != nil {
+			return 0, errorInvalidInteger
+		} else if p.Data[p.Index] == byte(45) { // "-"
+			isNegative = true
 		} else {
-			digit, err := strconv.Atoi(string(p.Data[p.Index]))
-			if err != nil {
-				return 0, errorInvalidInteger
-			}
 			intValue *= 10
 			intValue += int64(digit)
 		}
@@ -122,36 +140,13 @@ func (p *ParserData) ReadDictionary() (map[string]interface{}, error) {
 	// incrementing to offset "d"
 	p.Index++
 
-	for p.Index < p.Length && !p.isEnd() {
-		key, err := p.ReadString()
-		if err != nil {
+	for !p.isEnd() {
+		if key, err := p.ReadString(); err != nil {
 			return nil, err
-		} else if p.isString() {
-			val, err := p.ReadString()
-			if err != nil {
-				return nil, err
-			}
-			dict[key] = val
-		} else if p.isInt() {
-			val, err := p.ReadInt()
-			if err != nil {
-				return nil, err
-			}
-			dict[key] = val
-		} else if p.isList() {
-			val, err := p.ReadList()
-			if err != nil {
-				return nil, err
-			}
-			dict[key] = val
-		} else if p.isDict() {
-			val, err := p.ReadDictionary()
-			if err != nil {
-				return nil, err
-			}
-			dict[key] = val
-		} else {
+		} else if val, err := p.readNext(); err != nil {
 			return nil, errorInvalidFormat
+		} else {
+			dict[key] = val
 		}
 	}
 
@@ -172,29 +167,9 @@ func (p *ParserData) ReadList() ([]interface{}, error) {
 	p.Index++
 
 	for !p.isEnd() {
-		if p.isString() {
-			val, err := p.ReadString()
-			if err != nil {
-				return nil, err
-			}
-			list = append(list, val)
-		} else if p.isInt() {
-			val, err := p.ReadInt()
-			if err != nil {
-				return nil, err
-			}
-			list = append(list, val)
-		} else if p.isList() {
-			val, err := p.ReadList()
-			if err != nil {
-				return nil, err
-			}
-			list = append(list, val)
+		if val, err := p.readNext(); err != nil {
+			return nil, err
 		} else {
-			val, err := p.ReadDictionary()
-			if err != nil {
-				return nil, err
-			}
 			list = append(list, val)
 		}
 	}
