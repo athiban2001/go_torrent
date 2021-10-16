@@ -19,7 +19,7 @@ type Torrent struct {
 	Info         *Info
 }
 
-func New(filename string) (*Torrent, error) {
+func NewTorrent(filename string) (*Torrent, error) {
 	metaDataBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read file : %v", err.Error())
