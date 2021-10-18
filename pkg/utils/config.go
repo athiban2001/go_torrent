@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"io"
 	"io/fs"
+	"math/rand"
 	"os"
 	"path"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -44,12 +46,16 @@ func GetConfigFile() (string, error) {
 	configFilePath := path.Join(configDir, "config.json")
 	stat, err = os.Stat(configFilePath)
 	if err != nil && errors.Is(err, fs.ErrNotExist) {
+		peerID := getPeerID()
+		jsonInitData := "{\"peerID\":\"" + peerID + "\"}"
+
 		file, err := os.Create(configFilePath)
 		if err != nil {
 			return "", err
 		}
 		defer file.Close()
-		if _, err = file.WriteString("{}"); err != nil {
+
+		if _, err = file.WriteString(jsonInitData); err != nil {
 			return "", err
 		}
 		if stat, err = file.Stat(); err != nil {
@@ -98,5 +104,16 @@ func CopyDataFile(src, destFileName string) error {
 	return nil
 }
 
-// func GetCurrentTorrents() ([]*defs.Torrent, error) {
-// }
+func getPeerID() string {
+	prefix := "-GT0001-"
+	possibleDigits := []rune("0123456789")
+
+	rand.Seed(time.Now().UnixNano())
+	b := strings.Builder{}
+
+	for i := 1; i <= 12; i++ {
+		b.WriteRune(possibleDigits[rand.Intn(len(possibleDigits))])
+	}
+
+	return prefix + b.String()
+}
