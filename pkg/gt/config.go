@@ -1,18 +1,12 @@
 package gt
 
 import (
-	"encoding/json"
-	"fmt"
-	"os"
-	"path"
+	"bytes"
+	"encoding/gob"
+	"io"
 
 	"github.com/athiban2001/go_torrent/pkg/utils"
 )
-
-type GoTorrentConfig struct {
-	PeerID   string     `json:"peerID"`
-	Torrents []*Torrent `json:"torrents"`
-}
 
 func GetConfig() (*GoTorrentConfig, error) {
 	configFileData, err := utils.GetConfigFile()
@@ -20,9 +14,19 @@ func GetConfig() (*GoTorrentConfig, error) {
 		return nil, err
 	}
 
+	if len(configFileData) == 0 {
+		gtConfig := &GoTorrentConfig{}
+		gtConfig.PeerID = GetPeerID()
+		if err := WriteConfig(gtConfig); err != nil {
+			return nil, err
+		}
+
+		return gtConfig, nil
+	}
+
 	gtConfig := &GoTorrentConfig{}
-	if err = json.Unmarshal([]byte(configFileData), gtConfig); err != nil {
-		fmt.Println(configFileData)
+	buffer := bytes.NewBuffer(configFileData)
+	if err := gob.NewDecoder(buffer).Decode(gtConfig); err != nil && err != io.EOF {
 		return nil, err
 	}
 
@@ -30,26 +34,11 @@ func GetConfig() (*GoTorrentConfig, error) {
 }
 
 func WriteConfig(config *GoTorrentConfig) error {
-	data, err := json.MarshalIndent(config, "", "    ")
-	if err != nil {
+	data := make([]byte, 0)
+	buffer := bytes.NewBuffer(data)
+	if err := gob.NewEncoder(buffer).Encode(config); err != nil {
 		return err
 	}
 
-	configDirPath, err := utils.GetConfigDir()
-	if err != nil {
-		return err
-	}
-
-	configFilePath := path.Join(configDirPath, "config.json")
-	file, err := os.Create(configFilePath)
-	if err != nil {
-		return err
-	}
-	defer file.Close()
-
-	if _, err = file.Write(data); err != nil {
-		return err
-	}
-
-	return nil
+	return utils.WriteConfigFile(buffer.Bytes())
 }

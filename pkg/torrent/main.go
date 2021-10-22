@@ -1,4 +1,4 @@
-package gt
+package torrent
 
 import (
 	"fmt"
@@ -7,24 +7,12 @@ import (
 	"time"
 
 	"github.com/athiban2001/go_torrent/pkg/bencoding"
+	"github.com/athiban2001/go_torrent/pkg/gt"
 	"github.com/athiban2001/go_torrent/pkg/utils"
 	"github.com/google/uuid"
 )
 
-type Torrent struct {
-	ID           string     `json:"id,omitempty"`
-	Name         string     `json:"name,omitempty"`
-	Announce     string     `json:"announce,omitempty"`
-	AnnounceList [][]string `json:"announce-list,omitempty"`
-	CreationDate time.Time  `json:"creation date,omitempty"`
-	Comment      string     `json:"comment,omitempty"`
-	CreatedBy    string     `json:"created by,omitempty"`
-	Encoding     string     `json:"encoding,omitempty"`
-	Progress     string     `json:"progress,omitempty"`
-	Info         *Info      `json:"info"`
-}
-
-func NewTorrent(filename string) (*Torrent, error) {
+func New(filename string) (*gt.Torrent, error) {
 	metaDataBytes, err := os.ReadFile(filename)
 	if err != nil {
 		return nil, fmt.Errorf("unable to read file : %v", err.Error())
@@ -51,20 +39,37 @@ func NewTorrent(filename string) (*Torrent, error) {
 		return nil, err
 	}
 
-	gtConfig, err := GetConfig()
+	gtConfig, err := gt.GetConfig()
 	if err != nil {
 		return nil, err
 	}
 
 	gtConfig.Torrents = append(gtConfig.Torrents, torrent)
-	if err = WriteConfig(gtConfig); err != nil {
+	if err = gt.WriteConfig(gtConfig); err != nil {
 		return nil, err
 	}
 
 	return torrent, nil
 }
 
-func getTorrent(metaData map[string]interface{}, filename string) (*Torrent, error) {
+func Remove(torrent *gt.Torrent) error {
+	gtConfig, err := gt.GetConfig()
+	if err != nil {
+		return err
+	}
+	newTorrentList := make([]*gt.Torrent, 0)
+
+	for _, currentTorrent := range gtConfig.Torrents {
+		if currentTorrent.ID != torrent.ID {
+			newTorrentList = append(newTorrentList, currentTorrent)
+		}
+	}
+
+	gtConfig.Torrents = newTorrentList
+	return gt.WriteConfig(gtConfig)
+}
+
+func getTorrent(metaData map[string]interface{}, filename string) (*gt.Torrent, error) {
 	infoData, infoDataOK := metaData["info"].(map[string]interface{})
 	announce, announceOK := metaData["announce"].(string)
 	announceList, _ := metaData["announce-list"].([]interface{})
@@ -76,12 +81,12 @@ func getTorrent(metaData map[string]interface{}, filename string) (*Torrent, err
 	if !infoDataOK || !announceOK {
 		return nil, fmt.Errorf("invalid field : info,announce")
 	}
-	info, err := GetInfo(infoData)
+	info, err := getInfo(infoData)
 	if err != nil {
 		return nil, err
 	}
 
-	torrent := &Torrent{}
+	torrent := &gt.Torrent{}
 	torrent.ID = uuid.NewString()
 	torrent.Name = filename
 	torrent.CreationDate = time.Unix(epoch, 0)
@@ -90,7 +95,10 @@ func getTorrent(metaData map[string]interface{}, filename string) (*Torrent, err
 	torrent.Announce = announce
 	torrent.AnnounceList = getAnnounceList(announceList)
 	torrent.Encoding = encoding
+	torrent.Downloaded = 0
+	torrent.Uploaded = 0
 	torrent.Info = info
+	torrent.Left = getSize(torrent.Info.Files)
 	return torrent, nil
 }
 

@@ -1,19 +1,15 @@
 package utils
 
 import (
-	"errors"
 	"fmt"
 	"io"
-	"io/fs"
-	"math/rand"
 	"os"
 	"path"
 	"runtime"
-	"strings"
 	"time"
 )
 
-var configFileData string = "{}"
+var configFileData []byte = make([]byte, 0)
 var configFileLastModified time.Time = time.Now()
 
 func GetConfigDir() (string, error) {
@@ -34,47 +30,62 @@ func GetConfigDir() (string, error) {
 	return configPath, nil
 }
 
-func GetConfigFile() (string, error) {
-	var stat os.FileInfo
-	var err error
-
+func GetConfigFile() ([]byte, error) {
 	configDir, err := GetConfigDir()
 	if err != nil {
-		return "", err
+		return nil, err
 	}
 
-	configFilePath := path.Join(configDir, "config.json")
-	stat, err = os.Stat(configFilePath)
-	if err != nil && errors.Is(err, fs.ErrNotExist) {
-		peerID := getPeerID()
-		jsonInitData := "{\"peerID\":\"" + peerID + "\"}"
+	configFilePath := path.Join(configDir, "config.gt")
 
-		file, err := os.Create(configFilePath)
-		if err != nil {
-			return "", err
-		}
-		defer file.Close()
+	file, err := os.OpenFile(configFilePath, os.O_CREATE|os.O_RDWR, 0664)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
 
-		if _, err = file.WriteString(jsonInitData); err != nil {
-			return "", err
-		}
-		if stat, err = file.Stat(); err != nil {
-			return "", err
-		}
-	} else if err != nil {
-		return "", err
+	stat, err := os.Stat(configFilePath)
+	if err != nil {
+		return nil, err
 	}
 
 	if !stat.ModTime().Equal(configFileLastModified) {
 		data, err := os.ReadFile(configFilePath)
 		if err != nil {
-			return "", err
+			return nil, err
 		}
-		configFileData = string(data)
+		configFileData = data
 		configFileLastModified = stat.ModTime()
 	}
 
 	return configFileData, nil
+}
+
+func WriteConfigFile(data []byte) error {
+	configDirPath, err := GetConfigDir()
+	if err != nil {
+		return err
+	}
+
+	filePath := path.Join(configDirPath, "config.gt")
+	file, err := os.OpenFile(filePath, os.O_CREATE|os.O_RDWR, 0664)
+	if err != nil {
+		return err
+	}
+
+	if _, err = file.Write(data); err != nil {
+		return err
+	}
+
+	stat, err := file.Stat()
+	if err != nil {
+		return err
+	}
+
+	configFileData = data
+	configFileLastModified = stat.ModTime()
+
+	return nil
 }
 
 func CopyDataFile(src, destFileName string) error {
@@ -104,16 +115,12 @@ func CopyDataFile(src, destFileName string) error {
 	return nil
 }
 
-func getPeerID() string {
-	prefix := "-GT0001-"
-	possibleDigits := []rune("0123456789")
-
-	rand.Seed(time.Now().UnixNano())
-	b := strings.Builder{}
-
-	for i := 1; i <= 12; i++ {
-		b.WriteRune(possibleDigits[rand.Intn(len(possibleDigits))])
+func RemoveDataFile(filename string) error {
+	configDirPath, err := GetConfigDir()
+	if err != nil {
+		return err
 	}
 
-	return prefix + b.String()
+	filePath := path.Join(configDirPath, "data", filename)
+	return os.Remove(filePath)
 }
